@@ -103,7 +103,11 @@ export default async function handler(req, res) {
         const pagflexPayload = {
             amount: amount, // Valor em centavos
             paymentMethod: 'credit_card',
+            installments: 1, // Número de parcelas obrigatório
             token: token, // Token criptografado do cartão
+            card: {
+                token: token // Informações do cartão via token
+            },
             customer: {
                 name: customer.name.trim(),
                 email: customer.email.toLowerCase().trim(),
