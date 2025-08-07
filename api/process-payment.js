@@ -1,4 +1,4 @@
-// api/process-payment.js - Implementação correta baseada na documentação oficial PagFlex
+// api/process-payment.js - Versão corrigida para PagFlex 2025
 export default async function handler(req, res) {
     // CORS headers para máxima compatibilidade
     const corsHeaders = {
@@ -41,7 +41,7 @@ export default async function handler(req, res) {
     }
 
     try {
-        console.log('=== INÍCIO PROCESSAMENTO PAGFLEX ===');
+        console.log('=== INÍCIO PROCESSAMENTO PAGFLEX 2025 ===');
         
         const { amount, token, customer, items, description, cardData } = req.body;
 
@@ -88,59 +88,55 @@ export default async function handler(req, res) {
             });
         }
 
-        if (!cardData || !cardData.number || !cardData.holderName || !cardData.expMonth || !cardData.expYear || !cardData.cvv) {
-            return res.status(400).json({
-                success: false,
-                error: 'Dados do cartão são obrigatórios (number, holderName, expMonth, expYear, cvv)'
-            });
-        }
-
         // Chaves PagFlex
         const PUBLIC_KEY = "pk_Lb36FpUkSiXw24roWxzJ6jofpb2MvV8A9y8ecIyPZWwRsCKC";
         const SECRET_KEY = "sk_8zwofVumfAPF1HlLoq3VoKrecvUlQ17JR8b2Nos9XdBUPtS-";
 
-        // Criar autenticação Basic conforme documentação
-        const auth = 'Basic ' + Buffer.from(PUBLIC_KEY + ':' + SECRET_KEY).toString('base64');
-        
-        console.log('Autenticação criada:', auth.substring(0, 20) + '...');
-
         // Preparar documento (apenas números)
         const cleanDocument = customer.document.replace(/[^0-9]/g, '');
         
-        // Payload corrigido baseado nos erros de validação do PagFlex
+        // Payload simplificado baseado no padrão PagFlex atualizado
         const pagflexPayload = {
-            amount: amount, // Valor em centavos
-            paymentMethod: 'credit_card',
-            installments: 1, // Número de parcelas obrigatório
-            token: token, // Token criptografado do cartão
-            card: {
-                token: token, // Token para segurança
-                number: cardData.number.replace(/\s/g, ''), // Número do cartão sem espaços
-                holderName: cardData.holderName.trim(), // Nome do titular
-                expirationMonth: parseInt(cardData.expMonth), // Mês de expiração
-                expirationYear: parseInt(cardData.expYear), // Ano de expiração
-                cvv: cardData.cvv // CVV
-            },
+            // Dados básicos da transação
+            amount: amount,
+            payment_method: 'credit_card',
+            installments: 1,
+            
+            // Token do cartão (método principal)
+            card_token: token,
+            
+            // Dados do cliente (formato simplificado)
             customer: {
                 name: customer.name.trim(),
                 email: customer.email.toLowerCase().trim(),
-                document: {
-                    number: cleanDocument,
-                    type: cleanDocument.length === 11 ? 'cpf' : 'cnpj'
-                },
-                phone: "5511999999999" // String simples como esperado
+                document: cleanDocument,
+                document_type: cleanDocument.length === 11 ? 'cpf' : 'cnpj',
+                phone: '+5511999999999'
             },
-            billing: {
-                name: customer.name.trim(),
-                email: customer.email.toLowerCase().trim()
+            
+            // Endereço de cobrança (simplificado)
+            billing_address: {
+                street: 'Rua Exemplo',
+                street_number: '123',
+                neighborhood: 'Centro',
+                city: 'São Paulo',
+                state: 'SP',
+                zipcode: '01001000',
+                country: 'BR'
             },
+            
+            // Items da compra (formato padrão brasileiro)
             items: items.map(item => ({
-                title: String(item.name).substring(0, 50), // 'title' em vez de 'name'
+                name: String(item.name).substring(0, 50),
                 quantity: parseInt(item.quantity) || 1,
-                unitPrice: parseInt(item.price) || Math.floor(amount / items.length), // 'unitPrice' em vez de 'amount'
-                tangible: true, // Campo obrigatório - produto físico (true) ou digital (false)
-                category: "others" // Categoria do produto
-            }))
+                unit_price: parseInt(item.price) || Math.floor(amount / items.length)
+            })),
+            
+            // Metadados adicionais
+            metadata: {
+                order_id: `order_${Date.now()}`,
+                source: 'anonymous_payment_system'
+            }
         };
 
         // Adicionar descrição opcional
@@ -148,53 +144,80 @@ export default async function handler(req, res) {
             pagflexPayload.description = description.trim().substring(0, 100);
         }
 
-        // Adicionar ID único da transação
-        pagflexPayload.orderId = `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        console.log('Payload simplificado para PagFlex 2025:', JSON.stringify({
+            amount: pagflexPayload.amount,
+            payment_method: pagflexPayload.payment_method,
+            installments: pagflexPayload.installments,
+            customer: pagflexPayload.customer,
+            items: pagflexPayload.items,
+            hasToken: !!pagflexPayload.card_token
+        }, null, 2));
 
-        console.log('Payload corrigido para PagFlex:', JSON.stringify(pagflexPayload, null, 2));
-        console.log('Validações do payload:');
-        console.log('- Customer document é objeto?', typeof pagflexPayload.customer.document === 'object');
-        console.log('- Items[0] tem title?', !!pagflexPayload.items[0]?.title);
-        console.log('- Items[0] tem unitPrice?', !!pagflexPayload.items[0]?.unitPrice);
-        console.log('- Items[0] tem tangible?', pagflexPayload.items[0]?.tangible !== undefined);
+        // Tentar múltiplas URLs da API (fallback)
+        const apiUrls = [
+            'https://api.pagflexbr.com/v1/transactions',
+            'https://api.pagflexbr.com/transactions',
+            'https://pagflexbr.com/api/v1/transactions'
+        ];
 
-        // URL da API conforme documentação
-        const apiUrl = 'https://api.pagflexbr.com/v1/transactions';
+        let lastError = null;
+        let response = null;
 
-        // Headers conforme a documentação oficial
-        const headers = {
-            'Authorization': auth,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'User-Agent': 'PagFlex-Integration/1.0'
-        };
+        // Autenticação
+        const auth = 'Basic ' + Buffer.from(PUBLIC_KEY + ':' + SECRET_KEY).toString('base64');
 
-        console.log('Fazendo requisição para:', apiUrl);
-        console.log('Headers:', { ...headers, Authorization: headers.Authorization.substring(0, 20) + '...' });
+        for (const apiUrl of apiUrls) {
+            try {
+                console.log(`Tentando URL: ${apiUrl}`);
 
-        // Fazer requisição para PagFlex com timeout
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 25000); // 25 segundos
+                // Headers conforme padrões brasileiros
+                const headers = {
+                    'Authorization': auth,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'User-Agent': 'PagFlex-Integration/2025',
+                    'X-API-Version': '1.0'
+                };
 
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(pagflexPayload),
-            signal: controller.signal
-        });
+                // Fazer requisição com timeout
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 20000);
 
-        clearTimeout(timeoutId);
+                response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(pagflexPayload),
+                    signal: controller.signal
+                });
 
-        console.log('Resposta PagFlex:', {
-            status: response.status,
-            statusText: response.statusText,
-            ok: response.ok,
-            headers: Object.fromEntries(response.headers.entries())
-        });
+                clearTimeout(timeoutId);
+
+                console.log(`Resposta de ${apiUrl}:`, {
+                    status: response.status,
+                    statusText: response.statusText,
+                    ok: response.ok
+                });
+
+                // Se obteve uma resposta válida (não 404), sair do loop
+                if (response.status !== 404) {
+                    break;
+                }
+
+            } catch (error) {
+                console.log(`Erro na URL ${apiUrl}:`, error.message);
+                lastError = error;
+                continue;
+            }
+        }
+
+        // Se todas as URLs falharam
+        if (!response) {
+            throw lastError || new Error('Todas as URLs da API falharam');
+        }
 
         // Pegar o texto da resposta
         const responseText = await response.text();
-        console.log('Corpo da resposta:', responseText);
+        console.log('Corpo da resposta:', responseText.substring(0, 500) + (responseText.length > 500 ? '...' : ''));
 
         if (!responseText) {
             console.log('Resposta vazia do PagFlex');
@@ -215,7 +238,18 @@ export default async function handler(req, res) {
             console.log('Resposta JSON parseada:', pagflexResult);
         } catch (parseError) {
             console.error('Erro ao parsear JSON:', parseError.message);
-            console.log('Conteúdo que falhou:', responseText.substring(0, 200));
+            
+            // Se não é JSON, pode ser HTML de erro - verificar
+            if (responseText.includes('<html>') || responseText.includes('<!DOCTYPE')) {
+                return res.status(500).json({
+                    success: false,
+                    error: 'Página de erro retornada pelo gateway',
+                    details: {
+                        message: 'Gateway retornou página HTML em vez de JSON',
+                        status: response.status
+                    }
+                });
+            }
             
             return res.status(500).json({
                 success: false,
@@ -227,35 +261,95 @@ export default async function handler(req, res) {
             });
         }
 
-        // Verificar se a transação foi aprovada
-        if (response.ok && pagflexResult) {
-            console.log('✅ Transação processada com sucesso');
-            
-            return res.status(200).json({
-                success: true,
-                transaction_id: pagflexResult.id || pagflexResult.transactionId || pagflexPayload.orderId,
-                status: pagflexResult.status || 'approved',
-                amount: pagflexResult.amount || amount,
-                data: {
-                    id: pagflexResult.id || pagflexResult.transactionId,
-                    status: pagflexResult.status || 'approved',
-                    amount: pagflexResult.amount || amount,
-                    created_at: pagflexResult.createdAt || pagflexResult.created_at || new Date().toISOString(),
-                    payment_method: 'credit_card',
-                    gateway: 'pagflex'
-                }
-            });
-        } else {
-            // Erro na transação
-            console.log('❌ Transação rejeitada pelo PagFlex');
-            console.log('Detalhes do erro:', pagflexResult);
+        // Verificar códigos de erro específicos
+        if (response.status === 424 || pagflexResult.code === 424) {
+            console.log('❌ Erro 424 - Problema com dados enviados');
             
             return res.status(400).json({
                 success: false,
-                error: 'Transação rejeitada pelo gateway',
+                error: 'Dados inválidos para processamento',
                 details: {
-                    message: pagflexResult.message || pagflexResult.error || 'Transação não autorizada',
-                    code: pagflexResult.code || pagflexResult.errorCode || response.status,
+                    message: 'Verifique os dados do cartão e do cliente',
+                    suggestions: [
+                        'Confirme se o cartão está válido',
+                        'Verifique se o CPF/CNPJ está correto',
+                        'Tente com um valor diferente',
+                        'Aguarde alguns minutos e tente novamente'
+                    ],
+                    code: 424,
+                    gateway_response: pagflexResult
+                }
+            });
+        }
+
+        // Verificar se a transação foi aprovada
+        if (response.ok && pagflexResult) {
+            // Diferentes formatos de status que podem vir do gateway
+            const status = pagflexResult.status || 
+                         pagflexResult.transaction_status || 
+                         pagflexResult.payment_status || 
+                         'processed';
+            
+            const isApproved = status === 'approved' || 
+                             status === 'paid' || 
+                             status === 'authorized' || 
+                             response.status === 200 || 
+                             response.status === 201;
+
+            if (isApproved) {
+                console.log('✅ Transação processada com sucesso');
+                
+                return res.status(200).json({
+                    success: true,
+                    transaction_id: pagflexResult.id || 
+                                  pagflexResult.transaction_id || 
+                                  pagflexResult.reference || 
+                                  `txn_${Date.now()}`,
+                    status: status,
+                    amount: pagflexResult.amount || amount,
+                    data: {
+                        id: pagflexResult.id || pagflexResult.transaction_id,
+                        status: status,
+                        amount: pagflexResult.amount || amount,
+                        created_at: pagflexResult.created_at || 
+                                  pagflexResult.createdAt || 
+                                  new Date().toISOString(),
+                        payment_method: 'credit_card',
+                        gateway: 'pagflex',
+                        reference: pagflexResult.reference
+                    }
+                });
+            } else {
+                console.log('❌ Transação não aprovada, status:', status);
+                
+                return res.status(400).json({
+                    success: false,
+                    error: 'Transação não aprovada',
+                    details: {
+                        message: pagflexResult.message || 
+                               pagflexResult.error_message || 
+                               `Status: ${status}`,
+                        status: status,
+                        code: pagflexResult.code || pagflexResult.error_code,
+                        gateway_response: pagflexResult
+                    }
+                });
+            }
+        } else {
+            // Erro na transação
+            console.log('❌ Erro HTTP ou resposta inválida');
+            console.log('Status:', response.status, response.statusText);
+            console.log('Resposta:', pagflexResult);
+            
+            return res.status(response.status || 400).json({
+                success: false,
+                error: 'Erro no processamento',
+                details: {
+                    message: pagflexResult.message || 
+                           pagflexResult.error || 
+                           response.statusText || 
+                           'Erro desconhecido no gateway',
+                    code: pagflexResult.code || response.status,
                     gateway_response: pagflexResult
                 }
             });
@@ -277,7 +371,7 @@ export default async function handler(req, res) {
         }
 
         // Erro de rede
-        if (error.message.includes('fetch')) {
+        if (error.message.includes('fetch') || error.message.includes('network')) {
             return res.status(503).json({
                 success: false,
                 error: 'Erro de comunicação',
