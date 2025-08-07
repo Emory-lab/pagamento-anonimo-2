@@ -302,6 +302,16 @@
             color: #b0b0c4;
         }
 
+        .debug-info {
+            margin-top: 20px;
+            padding: 16px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            font-size: 12px;
+            color: #888;
+            display: none;
+        }
+
         @media (max-width: 768px) {
             .container {
                 padding: 24px;
@@ -450,21 +460,66 @@
             <h3 id="resultTitle"></h3>
             <pre id="resultContent"></pre>
         </div>
+
+        <div class="debug-info" id="debugInfo">
+            <strong>Debug Info:</strong>
+            <pre id="debugContent"></pre>
+        </div>
     </div>
 
     <script>
         // Chaves PagFlex
         const PUBLIC_KEY = "pk_Lb36FpUkSiXw24roWxzJ6jofpb2MvV8A9y8ecIyPZWwRsCKC";
         
-        // Inicializar PagFlex
-        document.addEventListener('DOMContentLoaded', async function() {
+        // Variável global para controlar se PagFlex foi inicializado
+        let pagflexInitialized = false;
+        
+        // Função para inicializar PagFlex
+        async function initializePagFlex() {
             try {
+                if (typeof PagFlex === 'undefined') {
+                    throw new Error('PagFlex library not loaded');
+                }
+                
                 await PagFlex.setPublicKey(PUBLIC_KEY);
-                console.log('PagFlex inicializado');
+                pagflexInitialized = true;
+                console.log('✅ PagFlex inicializado com sucesso');
+                
+                // Atualizar botão para indicar que está pronto
+                const submitBtn = document.getElementById('submitBtn');
+                if (submitBtn.textContent.includes('Carregando')) {
+                    submitBtn.textContent = '🚀 Processar Pagamento';
+                    submitBtn.disabled = false;
+                }
+                
             } catch (error) {
-                console.error('Erro PagFlex:', error);
-                showResult('error', 'Erro de Inicialização', 'Falha ao inicializar sistema de pagamento');
+                console.error('❌ Erro ao inicializar PagFlex:', error);
+                showResult('error', 'Erro de Inicialização', 
+                    'Falha ao inicializar sistema de pagamento: ' + error.message);
+                
+                const submitBtn = document.getElementById('submitBtn');
+                submitBtn.textContent = '❌ Sistema Indisponível';
+                submitBtn.disabled = true;
             }
+        }
+
+        // Inicializar quando a página carregar
+        document.addEventListener('DOMContentLoaded', function() {
+            // Mostrar que está carregando
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.textContent = '⏳ Carregando Sistema...';
+            submitBtn.disabled = true;
+            
+            // Tentar inicializar imediatamente
+            initializePagFlex();
+            
+            // Fallback: tentar novamente após 2 segundos se não funcionou
+            setTimeout(() => {
+                if (!pagflexInitialized) {
+                    console.log('Tentando inicializar PagFlex novamente...');
+                    initializePagFlex();
+                }
+            }, 2000);
         });
 
         // Formatação em tempo real
@@ -541,21 +596,81 @@
             resultDiv.style.display = 'block';
         }
 
+        function showDebug(info) {
+            const debugDiv = document.getElementById('debugInfo');
+            const debugContent = document.getElementById('debugContent');
+            
+            debugContent.textContent = typeof info === 'object' 
+                ? JSON.stringify(info, null, 2) 
+                : info;
+            debugDiv.style.display = 'block';
+        }
+
         function showLoading(show) {
             const loading = document.getElementById('loading');
             const submitBtn = document.getElementById('submitBtn');
             const result = document.getElementById('result');
+            const debugInfo = document.getElementById('debugInfo');
 
             loading.style.display = show ? 'block' : 'none';
             submitBtn.disabled = show;
             if (show) {
                 result.style.display = 'none';
+                debugInfo.style.display = 'none';
+            }
+        }
+
+        // Função para criar token do cartão
+        async function createCardToken(cardData) {
+            if (!pagflexInitialized) {
+                throw new Error('PagFlex não foi inicializado');
+            }
+
+            // Validar dados do cartão antes de tokenizar
+            if (!cardData.number || cardData.number.length < 13) {
+                throw new Error('Número do cartão inválido');
+            }
+            
+            if (!cardData.holderName || cardData.holderName.length < 2) {
+                throw new Error('Nome no cartão inválido');
+            }
+            
+            if (!cardData.expMonth || !cardData.expYear) {
+                throw new Error('Data de validade inválida');
+            }
+            
+            if (!cardData.cvv || cardData.cvv.length < 3) {
+                throw new Error('CVV inválido');
+            }
+
+            console.log('Criando token para cartão:', {
+                number: cardData.number.substring(0, 6) + '****' + cardData.number.substring(cardData.number.length - 4),
+                holderName: cardData.holderName,
+                expMonth: cardData.expMonth,
+                expYear: cardData.expYear,
+                cvv: '***'
+            });
+
+            try {
+                const token = await PagFlex.encrypt(cardData);
+                console.log('Token criado com sucesso:', token.substring(0, 20) + '...');
+                return token;
+            } catch (error) {
+                console.error('Erro ao criar token:', error);
+                throw new Error('Erro ao processar dados do cartão: ' + error.message);
             }
         }
 
         // Processar pagamento
         document.getElementById('paymentForm').addEventListener('submit', async function(e) {
             e.preventDefault();
+            
+            if (!pagflexInitialized) {
+                showResult('error', '❌ Sistema Não Inicializado', 
+                    'O sistema de pagamento ainda não foi carregado. Aguarde alguns segundos e tente novamente.');
+                return;
+            }
+            
             showLoading(true);
 
             try {
@@ -564,18 +679,15 @@
                 // Preparar dados do cartão
                 const cardData = {
                     number: formData.get('cardNumber').replace(/\s/g, ''),
-                    holderName: formData.get('holderName'),
+                    holderName: formData.get('holderName').trim(),
                     expMonth: parseInt(formData.get('expMonth')),
                     expYear: parseInt(formData.get('expYear')),
                     cvv: formData.get('cvv')
                 };
 
-                // Criptografar com PagFlex
-                const token = await PagFlex.encrypt(cardData);
-                
-                // Validações no frontend antes de enviar
+                // Validações no frontend antes de tokenizar
                 const amount = parseFloat(formData.get('amount'));
-                if (!amount || amount <= 0 || amount > 999999) {
+                if (!amount || amount <= 0 || amount > 9999.99) {
                     throw new Error('Valor deve estar entre R$ 0,01 e R$ 9.999,99');
                 }
                 
@@ -593,6 +705,9 @@
                 if (!customerDoc || (customerDoc.length !== 11 && customerDoc.length !== 14)) {
                     throw new Error('CPF deve ter 11 dígitos ou CNPJ deve ter 14 dígitos');
                 }
+
+                // Criar token do cartão
+                const token = await createCardToken(cardData);
                 
                 // Converter valor para centavos
                 const amountInCents = Math.round(amount * 100);
@@ -602,21 +717,36 @@
                     amount: amountInCents,
                     token: token,
                     customer: {
-                        name: formData.get('customerName').trim(),
-                        email: formData.get('customerEmail').trim().toLowerCase(),
-                        document: formData.get('customerDocument').replace(/[^0-9]/g, '') // Apenas números
+                        name: customerName,
+                        email: customerEmail.toLowerCase(),
+                        document: customerDoc
                     },
                     items: [{
-                        name: (formData.get('description') || 'Pagamento').substring(0, 50), // Limitar caracteres
+                        name: (formData.get('description') || 'Pagamento').substring(0, 50),
                         quantity: 1,
                         price: amountInCents
                     }]
                 };
 
-                // Adicionar descrição se fornecida (separado do item)
+                // Adicionar descrição se fornecida
                 if (formData.get('description') && formData.get('description').trim()) {
                     payload.description = formData.get('description').trim().substring(0, 100);
                 }
+
+                console.log('Enviando payload:', {
+                    amount: payload.amount,
+                    customer: payload.customer,
+                    items: payload.items,
+                    description: payload.description,
+                    tokenLength: token.length
+                });
+
+                showDebug({
+                    step: 'Enviando para API',
+                    amount: amountInCents,
+                    customer: payload.customer,
+                    items: payload.items
+                });
 
                 // Requisição para API
                 const response = await fetch('/api/process-payment', {
@@ -628,6 +758,19 @@
                 });
 
                 const result = await response.json();
+
+                console.log('Resposta da API:', {
+                    status: response.status,
+                    ok: response.ok,
+                    result: result
+                });
+
+                showDebug({
+                    step: 'Resposta recebida',
+                    status: response.status,
+                    success: result.success,
+                    result: result
+                });
 
                 if (response.ok && result.success) {
                     showResult('success', '✅ Pagamento Aprovado!', {
@@ -641,34 +784,63 @@
                     setTimeout(() => {
                         document.getElementById('paymentForm').reset();
                         document.getElementById('amountDisplay').textContent = 'R$ 0,00';
-                    }, 2000);
+                    }, 3000);
                 } else {
                     showResult('error', '❌ Pagamento Rejeitado', {
                         erro: result.error || 'Erro desconhecido',
-                        detalhes: result.details || 'Verifique os dados e tente novamente'
+                        detalhes: result.details || 'Verifique os dados e tente novamente',
+                        codigo: result.details?.code || response.status
                     });
                 }
 
             } catch (error) {
-                showResult('error', '❌ Erro de Comunicação', {
-                    erro: 'Falha na comunicação',
-                    detalhes: error.message || 'Tente novamente em alguns instantes'
+                console.error('Erro no processamento:', error);
+                showResult('error', '❌ Erro no Processamento', {
+                    erro: error.message || 'Erro desconhecido',
+                    sugestao: 'Verifique os dados do cartão e tente novamente'
+                });
+                
+                showDebug({
+                    step: 'Erro capturado',
+                    error: error.message,
+                    stack: error.stack
                 });
             } finally {
                 showLoading(false);
             }
         });
 
-        // Prevenir qualquer tipo de logging ou rastreamento
-        console.log = function() {};
-        console.info = function() {};
-        console.warn = function() {};
-        console.error = function() {};
-        
-        // Bloquear tentativas de captura de dados
-        Object.defineProperty(navigator, 'userAgent', {
-            get: function() { return 'Anonymous'; }
-        });
+        // Função para preencher dados de teste
+        function fillTestData() {
+            document.getElementById('amount').value = '10.00';
+            document.getElementById('amount').dispatchEvent(new Event('input'));
+            
+            document.getElementById('customerName').value = 'João Silva';
+            document.getElementById('customerEmail').value = 'joao@teste.com';
+            document.getElementById('customerDocument').value = '12345678900';
+            document.getElementById('customerDocument').dispatchEvent(new Event('input'));
+            
+            document.getElementById('cardNumber').value = '4111 1111 1111 1111';
+            document.getElementById('holderName').value = 'JOAO SILVA';
+            document.getElementById('expMonth').value = '12';
+            document.getElementById('expYear').value = '2026';
+            document.getElementById('cvv').value = '123';
+            
+            document.getElementById('description').value = 'Teste de pagamento';
+        }
+
+        // Adicionar botão de teste (apenas para desenvolvimento)
+        if (location.hostname === 'localhost' || location.hostname.includes('vercel')) {
+            const testButton = document.createElement('button');
+            testButton.type = 'button';
+            testButton.textContent = '🧪 Preencher Dados de Teste';
+            testButton.className = 'btn';
+            testButton.style.marginTop = '10px';
+            testButton.style.background = 'linear-gradient(135deg, #ff6b35, #f7931e)';
+            testButton.onclick = fillTestData;
+            
+            document.querySelector('.container').appendChild(testButton);
+        }
     </script>
 </body>
 </html>
