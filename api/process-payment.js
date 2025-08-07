@@ -1,8 +1,6 @@
-// api/process-payment.js - Vercel Serverless Function
-// Sistema de pagamento anônimo com PagFlex - VERSÃO CORRIGIDA
-
+// api/process-payment.js - Implementação correta baseada na documentação oficial PagFlex
 export default async function handler(req, res) {
-    // CORS headers para máxima compatibilidade (incluindo VPN/Proxy)
+    // CORS headers para máxima compatibilidade
     const corsHeaders = {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -23,15 +21,12 @@ export default async function handler(req, res) {
         'X-Robots-Tag': 'noindex, nofollow, nosnippet, noarchive',
     };
 
-    // Combinar headers
-    const allHeaders = { ...corsHeaders, ...securityHeaders };
-
-    // Aplicar headers imediatamente
-    Object.entries(allHeaders).forEach(([key, value]) => {
+    // Aplicar todos os headers
+    Object.entries({...corsHeaders, ...securityHeaders}).forEach(([key, value]) => {
         res.setHeader(key, value);
     });
 
-    // Resposta para OPTIONS (preflight)
+    // Resposta para OPTIONS (preflight CORS)
     if (req.method === 'OPTIONS') {
         return res.status(200).json({ message: 'OK' });
     }
@@ -46,11 +41,11 @@ export default async function handler(req, res) {
     }
 
     try {
-        console.log('=== INÍCIO DO PROCESSAMENTO ===');
+        console.log('=== INÍCIO PROCESSAMENTO PAGFLEX ===');
         
         const { amount, token, customer, items, description } = req.body;
 
-        // Log do payload recebido (sem dados sensíveis)
+        // Log seguro do payload (sem dados sensíveis)
         console.log('Payload recebido:', {
             amount,
             hasToken: !!token,
@@ -58,12 +53,12 @@ export default async function handler(req, res) {
             customer: customer ? {
                 name: customer.name,
                 email: customer.email,
-                documentLength: customer.document?.length
+                hasDocument: !!customer.document
             } : null,
             itemsCount: items?.length
         });
 
-        // Validações básicas
+        // Validações obrigatórias
         if (!amount || amount <= 0 || !Number.isInteger(amount)) {
             return res.status(400).json({
                 success: false,
@@ -71,24 +66,24 @@ export default async function handler(req, res) {
             });
         }
 
-        if (!token || typeof token !== 'string' || token.length < 10) {
+        if (!token || typeof token !== 'string') {
             return res.status(400).json({
                 success: false,
-                error: 'Token do cartão inválido'
+                error: 'Token do cartão é obrigatório'
             });
         }
 
         if (!customer || !customer.name || !customer.email || !customer.document) {
             return res.status(400).json({
                 success: false,
-                error: 'Dados do cliente incompletos'
+                error: 'Dados do cliente são obrigatórios (name, email, document)'
             });
         }
 
         if (!Array.isArray(items) || items.length === 0) {
             return res.status(400).json({
                 success: false,
-                error: 'Items são obrigatórios'
+                error: 'Pelo menos um item é obrigatório'
             });
         }
 
@@ -96,174 +91,179 @@ export default async function handler(req, res) {
         const PUBLIC_KEY = "pk_Lb36FpUkSiXw24roWxzJ6jofpb2MvV8A9y8ecIyPZWwRsCKC";
         const SECRET_KEY = "sk_8zwofVumfAPF1HlLoq3VoKrecvUlQ17JR8b2Nos9XdBUPtS-";
 
-        // Limpar documento (apenas números)
+        // Criar autenticação Basic conforme documentação
+        const auth = 'Basic ' + Buffer.from(PUBLIC_KEY + ':' + SECRET_KEY).toString('base64');
+        
+        console.log('Autenticação criada:', auth.substring(0, 20) + '...');
+
+        // Preparar documento (apenas números)
         const cleanDocument = customer.document.replace(/[^0-9]/g, '');
-
-        // Determinar tipo de documento
-        const documentType = cleanDocument.length === 11 ? "cpf" : "cnpj";
-
-        // Payload para PagFlex - baseado na documentação oficial
+        
+        // Payload exato conforme a documentação oficial do PagFlex
         const pagflexPayload = {
-            amount: amount,
-            card_token: token,
+            amount: amount, // Valor em centavos
+            paymentMethod: 'credit_card', // Conforme documentação (camelCase)
+            token: token, // Token criptografado do cartão
             customer: {
                 name: customer.name.trim(),
                 email: customer.email.toLowerCase().trim(),
                 document: cleanDocument,
-                document_type: documentType
-            },
-            billing: {
-                name: customer.name.trim(),
-                email: customer.email.toLowerCase().trim()
+                documentType: cleanDocument.length === 11 ? 'cpf' : 'cnpj' // camelCase
             },
             items: items.map(item => ({
                 name: String(item.name).substring(0, 50),
                 quantity: parseInt(item.quantity) || 1,
-                amount: parseInt(item.price) || amount
-            })),
-            currency: "BRL",
-            payment_method: "credit_card",
-            order_id: `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+                amount: parseInt(item.price) || Math.floor(amount / items.length)
+            }))
         };
 
-        // Adicionar descrição se fornecida
+        // Adicionar descrição opcional
         if (description && description.trim()) {
             pagflexPayload.description = description.trim().substring(0, 100);
         }
 
+        // Adicionar ID único da transação
+        pagflexPayload.orderId = `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
         console.log('Payload para PagFlex:', JSON.stringify(pagflexPayload, null, 2));
 
-        // Criar autenticação Basic
-        const credentials = Buffer.from(`${PUBLIC_KEY}:${SECRET_KEY}`).toString('base64');
+        // URL da API conforme documentação
+        const apiUrl = 'https://api.pagflexbr.com/v1/transactions';
 
-        // Headers para PagFlex
-        const pagflexHeaders = {
-            'Authorization': `Basic ${credentials}`,
+        // Headers conforme a documentação oficial
+        const headers = {
+            'Authorization': auth,
             'Content-Type': 'application/json',
             'Accept': 'application/json',
             'User-Agent': 'PagFlex-Integration/1.0'
         };
 
-        // Tentar diferentes endpoints
-        const possibleEndpoints = [
-            'https://api.pagflexbr.com/v1/sales',
-            'https://api.pagflexbr.com/v1/transactions',
-            'https://api.pagflexbr.com/sales',
-            'https://pagflexbr.com/api/v1/sales'
-        ];
+        console.log('Fazendo requisição para:', apiUrl);
+        console.log('Headers:', { ...headers, Authorization: headers.Authorization.substring(0, 20) + '...' });
 
-        let lastError = null;
-        let responseData = null;
+        // Fazer requisição para PagFlex com timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 25000); // 25 segundos
 
-        for (const endpoint of possibleEndpoints) {
-            try {
-                console.log(`Tentando endpoint: ${endpoint}`);
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(pagflexPayload),
+            signal: controller.signal
+        });
 
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 25000);
+        clearTimeout(timeoutId);
 
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: pagflexHeaders,
-                    body: JSON.stringify(pagflexPayload),
-                    signal: controller.signal
-                });
+        console.log('Resposta PagFlex:', {
+            status: response.status,
+            statusText: response.statusText,
+            ok: response.ok,
+            headers: Object.fromEntries(response.headers.entries())
+        });
 
-                clearTimeout(timeoutId);
+        // Pegar o texto da resposta
+        const responseText = await response.text();
+        console.log('Corpo da resposta:', responseText);
 
-                console.log(`Resposta do endpoint ${endpoint}:`, {
-                    status: response.status,
-                    statusText: response.statusText,
-                    headers: Object.fromEntries(response.headers.entries())
-                });
-
-                // Pegar o texto bruto da resposta
-                const responseText = await response.text();
-                console.log(`Texto da resposta (${endpoint}):`, responseText.substring(0, 500));
-
-                if (!responseText) {
-                    console.log(`Resposta vazia do endpoint ${endpoint}`);
-                    continue;
-                }
-
-                // Tentar parsear como JSON
-                let parsedResponse;
-                try {
-                    parsedResponse = JSON.parse(responseText);
-                } catch (parseError) {
-                    console.log(`Erro ao parsear JSON do endpoint ${endpoint}:`, parseError.message);
-                    console.log('Conteúdo que falhou ao parsear:', responseText);
-                    continue;
-                }
-
-                if (response.ok) {
-                    console.log(`Sucesso no endpoint ${endpoint}:`, parsedResponse);
-                    responseData = parsedResponse;
-                    break;
-                } else {
-                    console.log(`Erro HTTP ${response.status} no endpoint ${endpoint}:`, parsedResponse);
-                    lastError = {
-                        endpoint,
-                        status: response.status,
-                        error: parsedResponse
-                    };
-                }
-
-            } catch (fetchError) {
-                console.log(`Erro na requisição para ${endpoint}:`, fetchError.message);
-                lastError = {
-                    endpoint,
-                    error: fetchError.message
-                };
-                continue;
-            }
-        }
-
-        // Se chegou até aqui e não tem responseData, houve erro
-        if (!responseData) {
-            console.log('Todos os endpoints falharam. Último erro:', lastError);
-
-            return res.status(400).json({
+        if (!responseText) {
+            console.log('Resposta vazia do PagFlex');
+            return res.status(500).json({
                 success: false,
-                error: 'Falha na comunicação com o gateway de pagamento',
+                error: 'Resposta vazia do gateway de pagamento',
                 details: {
-                    message: lastError?.error?.message || 'Não foi possível processar o pagamento',
-                    code: lastError?.status || 'GATEWAY_ERROR',
-                    endpoint_tested: possibleEndpoints.length
+                    status: response.status,
+                    statusText: response.statusText
                 }
             });
         }
 
-        // Sucesso - processar resposta
-        console.log('Processamento concluído com sucesso:', responseData);
+        // Tentar parsear como JSON
+        let pagflexResult;
+        try {
+            pagflexResult = JSON.parse(responseText);
+            console.log('Resposta JSON parseada:', pagflexResult);
+        } catch (parseError) {
+            console.error('Erro ao parsear JSON:', parseError.message);
+            console.log('Conteúdo que falhou:', responseText.substring(0, 200));
+            
+            return res.status(500).json({
+                success: false,
+                error: 'Resposta inválida do gateway',
+                details: {
+                    message: 'Gateway retornou dados em formato inválido',
+                    preview: responseText.substring(0, 100)
+                }
+            });
+        }
 
-        return res.status(200).json({
-            success: true,
-            transaction_id: responseData.id || responseData.transaction_id || responseData.order_id,
-            status: responseData.status || 'processing',
-            amount: responseData.amount || amount,
-            data: {
-                id: responseData.id || responseData.transaction_id,
-                status: responseData.status || 'approved',
-                amount: responseData.amount || amount,
-                created_at: responseData.created_at || new Date().toISOString()
-            }
-        });
+        // Verificar se a transação foi aprovada
+        if (response.ok && pagflexResult) {
+            console.log('✅ Transação processada com sucesso');
+            
+            return res.status(200).json({
+                success: true,
+                transaction_id: pagflexResult.id || pagflexResult.transactionId || pagflexPayload.orderId,
+                status: pagflexResult.status || 'approved',
+                amount: pagflexResult.amount || amount,
+                data: {
+                    id: pagflexResult.id || pagflexResult.transactionId,
+                    status: pagflexResult.status || 'approved',
+                    amount: pagflexResult.amount || amount,
+                    created_at: pagflexResult.createdAt || pagflexResult.created_at || new Date().toISOString(),
+                    payment_method: 'credit_card',
+                    gateway: 'pagflex'
+                }
+            });
+        } else {
+            // Erro na transação
+            console.log('❌ Transação rejeitada pelo PagFlex');
+            console.log('Detalhes do erro:', pagflexResult);
+            
+            return res.status(400).json({
+                success: false,
+                error: 'Transação rejeitada pelo gateway',
+                details: {
+                    message: pagflexResult.message || pagflexResult.error || 'Transação não autorizada',
+                    code: pagflexResult.code || pagflexResult.errorCode || response.status,
+                    gateway_response: pagflexResult
+                }
+            });
+        }
 
     } catch (error) {
         console.error('=== ERRO GERAL ===');
-        console.error('Tipo do erro:', error.constructor.name);
+        console.error('Tipo:', error.name);
         console.error('Mensagem:', error.message);
         console.error('Stack:', error.stack);
         
+        // Verificar se é erro de timeout/abort
+        if (error.name === 'AbortError') {
+            return res.status(408).json({
+                success: false,
+                error: 'Timeout na comunicação com o gateway',
+                message: 'O gateway demorou muito para responder. Tente novamente.'
+            });
+        }
+
+        // Erro de rede
+        if (error.message.includes('fetch')) {
+            return res.status(503).json({
+                success: false,
+                error: 'Erro de comunicação',
+                message: 'Não foi possível conectar ao gateway de pagamento',
+                details: error.message
+            });
+        }
+
+        // Erro interno genérico
         return res.status(500).json({
             success: false,
             error: 'Erro interno do servidor',
             message: 'Falha no processamento do pagamento',
-            details: {
-                error_type: error.constructor.name,
-                message: error.message
-            }
+            details: process.env.NODE_ENV === 'development' ? {
+                error: error.message,
+                type: error.name
+            } : undefined
         });
     } finally {
         console.log('=== FIM DO PROCESSAMENTO ===');
