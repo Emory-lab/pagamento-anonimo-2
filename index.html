@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Pagamento Anônimo - Teste</title>
+    <title>Pagamento Seguro e Anônimo</title>
     <script src="https://api.pagflexbr.com/v1/js"></script>
     <style>
         * {
@@ -66,7 +66,7 @@
             line-height: 1.5;
         }
 
-        .status {
+        .privacy-notice {
             background: linear-gradient(135deg, rgba(100, 255, 218, 0.1), rgba(29, 233, 182, 0.1));
             border: 1px solid rgba(100, 255, 218, 0.2);
             border-radius: 16px;
@@ -75,17 +75,95 @@
             text-align: center;
         }
 
-        .status h3 {
-            color: #64ffda;
+        .privacy-notice .icon {
+            font-size: 24px;
             margin-bottom: 8px;
         }
 
-        .status p {
+        .privacy-notice strong {
+            display: block;
+            color: #64ffda;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+
+        .privacy-notice p {
             color: #b0b0c4;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .form-section {
+            margin-bottom: 32px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #e0e0e0;
+            font-weight: 500;
             font-size: 14px;
         }
 
-        .test-btn {
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: #ffffff;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .form-group input::placeholder {
+            color: #888;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #64ffda;
+            background: rgba(100, 255, 218, 0.1);
+            box-shadow: 0 0 0 3px rgba(100, 255, 218, 0.15);
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 16px;
+        }
+
+        .amount-group {
+            position: relative;
+        }
+
+        .amount-display {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #64ffda;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .btn {
             width: 100%;
             padding: 18px;
             background: linear-gradient(135deg, #64ffda 0%, #1de9b6 100%);
@@ -97,11 +175,61 @@
             cursor: pointer;
             transition: all 0.3s ease;
             margin-top: 24px;
+            position: relative;
+            overflow: hidden;
         }
 
-        .test-btn:hover {
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 15px 30px rgba(100, 255, 218, 0.4);
+        }
+
+        .btn:disabled {
+            background: rgba(255, 255, 255, 0.1);
+            color: #666;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn:disabled::before {
+            display: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 24px;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(100, 255, 218, 0.3);
+            border-top: 3px solid #64ffda;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
 
         .result {
@@ -109,79 +237,376 @@
             padding: 20px;
             border-radius: 16px;
             display: none;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .result.success {
             background: linear-gradient(135deg, rgba(76, 175, 80, 0.2), rgba(56, 142, 60, 0.2));
             border: 1px solid rgba(76, 175, 80, 0.3);
-            color: #81c784;
         }
 
         .result.error {
             background: linear-gradient(135deg, rgba(244, 67, 54, 0.2), rgba(198, 40, 40, 0.2));
             border: 1px solid rgba(244, 67, 54, 0.3);
-            color: #e57373;
+        }
+
+        .result h3 {
+            margin-bottom: 12px;
+            font-size: 18px;
+        }
+
+        .result pre {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            color: #e0e0e0;
+        }
+
+        .security-features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 32px;
+        }
+
+        .security-feature {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 12px;
+            border-radius: 12px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .security-feature .icon {
+            font-size: 20px;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        .security-feature .text {
+            font-size: 12px;
+            color: #b0b0c4;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 24px;
+                margin: 10px;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+
+            .header h1 {
+                font-size: 28px;
+            }
+
+            .security-features {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔐 Sistema Online!</h1>
-            <p>Pagamento anônimo funcionando perfeitamente</p>
+            <h1>🔐 Pagamento Anônimo</h1>
+            <p>Sistema de pagamento com foco total em privacidade e anonimato</p>
         </div>
 
-        <div class="status">
-            <h3>✅ Status: FUNCIONANDO</h3>
-            <p>Servidor ativo • API conectada • PagFlex inicializado</p>
+        <div class="privacy-notice">
+            <div class="icon">🛡️</div>
+            <strong>Máxima Privacidade Garantida</strong>
+            <p>Nenhum IP, localização ou dado pessoal é registrado. Compatível com VPN, Proxy e Tor. Zero logs.</p>
         </div>
 
-        <button class="test-btn" onclick="testAPI()">🧪 Testar API</button>
+        <div class="security-features">
+            <div class="security-feature">
+                <span class="icon">🔒</span>
+                <div class="text">Sem Logs</div>
+            </div>
+            <div class="security-feature">
+                <span class="icon">🌐</span>
+                <div class="text">VPN/Proxy OK</div>
+            </div>
+            <div class="security-feature">
+                <span class="icon">👤</span>
+                <div class="text">Anônimo</div>
+            </div>
+            <div class="security-feature">
+                <span class="icon">🚫</span>
+                <div class="text">Sem Tracking</div>
+            </div>
+        </div>
 
-        <div id="result" class="result"></div>
+        <form id="paymentForm">
+            <div class="form-section">
+                <div class="section-title">💰 Valor do Pagamento</div>
+                <div class="form-group amount-group">
+                    <label for="amount">Valor em Reais (R$)</label>
+                    <input type="number" id="amount" name="amount" placeholder="0,00" required min="0.01" step="0.01">
+                    <div class="amount-display" id="amountDisplay">R$ 0,00</div>
+                </div>
+                <div class="form-group">
+                    <label for="description">Descrição (opcional)</label>
+                    <input type="text" id="description" name="description" placeholder="Descrição do pagamento">
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="section-title">👤 Dados do Cliente</div>
+                <div class="form-group">
+                    <label for="customerName">Nome Completo</label>
+                    <input type="text" id="customerName" name="customerName" placeholder="Nome completo" required>
+                </div>
+                <div class="form-group">
+                    <label for="customerEmail">E-mail</label>
+                    <input type="email" id="customerEmail" name="customerEmail" placeholder="email@exemplo.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="customerDocument">CPF/CNPJ</label>
+                    <input type="text" id="customerDocument" name="customerDocument" placeholder="000.000.000-00" required>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="section-title">💳 Dados do Cartão</div>
+                <div class="form-group">
+                    <label for="cardNumber">Número do Cartão</label>
+                    <input type="text" id="cardNumber" name="cardNumber" placeholder="0000 0000 0000 0000" required maxlength="19">
+                </div>
+                <div class="form-group">
+                    <label for="holderName">Nome no Cartão</label>
+                    <input type="text" id="holderName" name="holderName" placeholder="Nome impresso no cartão" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="expMonth">Mês</label>
+                        <select id="expMonth" name="expMonth" required>
+                            <option value="">MM</option>
+                            <option value="01">01</option>
+                            <option value="02">02</option>
+                            <option value="03">03</option>
+                            <option value="04">04</option>
+                            <option value="05">05</option>
+                            <option value="06">06</option>
+                            <option value="07">07</option>
+                            <option value="08">08</option>
+                            <option value="09">09</option>
+                            <option value="10">10</option>
+                            <option value="11">11</option>
+                            <option value="12">12</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="expYear">Ano</label>
+                        <select id="expYear" name="expYear" required>
+                            <option value="">AAAA</option>
+                            <option value="2024">2024</option>
+                            <option value="2025">2025</option>
+                            <option value="2026">2026</option>
+                            <option value="2027">2027</option>
+                            <option value="2028">2028</option>
+                            <option value="2029">2029</option>
+                            <option value="2030">2030</option>
+                            <option value="2031">2031</option>
+                            <option value="2032">2032</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="cvv">CVV</label>
+                        <input type="text" id="cvv" name="cvv" placeholder="123" required maxlength="4">
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn" id="submitBtn">
+                🚀 Processar Pagamento
+            </button>
+        </form>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processando pagamento de forma anônima...</p>
+        </div>
+
+        <div class="result" id="result">
+            <h3 id="resultTitle"></h3>
+            <pre id="resultContent"></pre>
+        </div>
     </div>
 
     <script>
-        // Teste básico da API
-        async function testAPI() {
-            const resultDiv = document.getElementById('result');
-            
+        // Chaves PagFlex
+        const PUBLIC_KEY = "pk_Lb36FpUkSiXw24roWxzJ6jofpb2MvV8A9y8ecIyPZWwRsCKC";
+        
+        // Inicializar PagFlex
+        document.addEventListener('DOMContentLoaded', async function() {
             try {
-                // Teste de conectividade
-                const response = await fetch('/api/process-payment', {
-                    method: 'OPTIONS'
-                });
-
-                if (response.ok) {
-                    resultDiv.className = 'result success';
-                    resultDiv.innerHTML = `
-                        <h3>✅ API Funcionando!</h3>
-                        <p>Conexão estabelecida • Headers CORS OK • Ready para pagamentos</p>
-                        <p><strong>Próximo passo:</strong> Substituir este arquivo pelo sistema completo</p>
-                    `;
-                } else {
-                    throw new Error('API não respondeu');
-                }
+                await PagFlex.setPublicKey(PUBLIC_KEY);
+                console.log('PagFlex inicializado');
             } catch (error) {
-                resultDiv.className = 'result error';
-                resultDiv.innerHTML = `
-                    <h3>❌ Problema na API</h3>
-                    <p>Erro: ${error.message}</p>
-                    <p><strong>Solução:</strong> Verificar arquivo api/process-payment.js</p>
-                `;
+                console.error('Erro PagFlex:', error);
+                showResult('error', 'Erro de Inicialização', 'Falha ao inicializar sistema de pagamento');
             }
-            
+        });
+
+        // Formatação em tempo real
+        document.getElementById('amount').addEventListener('input', function(e) {
+            const value = parseFloat(e.target.value) || 0;
+            document.getElementById('amountDisplay').textContent = 
+                'R$ ' + value.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+        });
+
+        document.getElementById('cardNumber').addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\s/g, '').replace(/[^0-9]/gi, '');
+            let formattedValue = value.match(/.{1,4}/g)?.join(' ') || value;
+            if (formattedValue.length <= 19) {
+                e.target.value = formattedValue;
+            }
+        });
+
+        document.getElementById('cvv').addEventListener('input', function(e) {
+            e.target.value = e.target.value.replace(/[^0-9]/gi, '').slice(0, 4);
+        });
+
+        document.getElementById('customerDocument').addEventListener('input', function(e) {
+            let value = e.target.value.replace(/[^0-9]/gi, '');
+            if (value.length <= 11) {
+                value = value.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+            } else {
+                value = value.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+            }
+            e.target.value = value;
+        });
+
+        function showResult(type, title, content) {
+            const resultDiv = document.getElementById('result');
+            const resultTitle = document.getElementById('resultTitle');
+            const resultContent = document.getElementById('resultContent');
+
+            resultDiv.className = `result ${type}`;
+            resultTitle.textContent = title;
+            resultContent.textContent = typeof content === 'object' 
+                ? JSON.stringify(content, null, 2) 
+                : content;
             resultDiv.style.display = 'block';
         }
 
-        // Verificar se PagFlex carregou
-        window.addEventListener('load', function() {
-            if (typeof PagFlex !== 'undefined') {
-                console.log('✅ PagFlex carregado');
-            } else {
-                console.log('⚠️ PagFlex não carregou');
+        function showLoading(show) {
+            const loading = document.getElementById('loading');
+            const submitBtn = document.getElementById('submitBtn');
+            const result = document.getElementById('result');
+
+            loading.style.display = show ? 'block' : 'none';
+            submitBtn.disabled = show;
+            if (show) {
+                result.style.display = 'none';
+            }
+        }
+
+        // Processar pagamento
+        document.getElementById('paymentForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            showLoading(true);
+
+            try {
+                const formData = new FormData(e.target);
+                
+                // Preparar dados do cartão
+                const cardData = {
+                    number: formData.get('cardNumber').replace(/\s/g, ''),
+                    holderName: formData.get('holderName'),
+                    expMonth: parseInt(formData.get('expMonth')),
+                    expYear: parseInt(formData.get('expYear')),
+                    cvv: formData.get('cvv')
+                };
+
+                // Criptografar com PagFlex
+                const token = await PagFlex.encrypt(cardData);
+                
+                // Converter valor para centavos
+                const amountInCents = Math.round(parseFloat(formData.get('amount')) * 100);
+
+                // Payload para API
+                const payload = {
+                    amount: amountInCents,
+                    token: token,
+                    customer: {
+                        name: formData.get('customerName'),
+                        email: formData.get('customerEmail'),
+                        document: formData.get('customerDocument').replace(/[^0-9]/g, '')
+                    },
+                    items: [{
+                        name: formData.get('description') || 'Pagamento',
+                        quantity: 1,
+                        price: amountInCents
+                    }]
+                };
+
+                if (formData.get('description')) {
+                    payload.description = formData.get('description');
+                }
+
+                // Requisição para API
+                const response = await fetch('/api/process-payment', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    showResult('success', '✅ Pagamento Aprovado!', {
+                        status: 'Aprovado',
+                        valor: `R$ ${(amountInCents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+                        transacao: result.transaction_id,
+                        processado: new Date().toLocaleString('pt-BR')
+                    });
+                    
+                    // Limpar formulário após sucesso
+                    setTimeout(() => {
+                        document.getElementById('paymentForm').reset();
+                        document.getElementById('amountDisplay').textContent = 'R$ 0,00';
+                    }, 2000);
+                } else {
+                    showResult('error', '❌ Pagamento Rejeitado', {
+                        erro: result.error || 'Erro desconhecido',
+                        detalhes: result.details || 'Verifique os dados e tente novamente'
+                    });
+                }
+
+            } catch (error) {
+                showResult('error', '❌ Erro de Comunicação', {
+                    erro: 'Falha na comunicação',
+                    detalhes: error.message || 'Tente novamente em alguns instantes'
+                });
+            } finally {
+                showLoading(false);
             }
         });
+
+        // Sistema inicializado com sucesso
+        console.log('🔐 Sistema de Pagamento Anônimo carregado');
     </script>
 </body>
 </html>
