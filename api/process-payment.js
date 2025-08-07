@@ -99,21 +99,35 @@ export default async function handler(req, res) {
         // Preparar documento (apenas números)
         const cleanDocument = customer.document.replace(/[^0-9]/g, '');
         
-        // Payload exato conforme a documentação oficial do PagFlex
+        // Payload corrigido baseado nos erros de validação do PagFlex
         const pagflexPayload = {
             amount: amount, // Valor em centavos
-            paymentMethod: 'credit_card', // Conforme documentação (camelCase)
+            paymentMethod: 'credit_card',
             token: token, // Token criptografado do cartão
             customer: {
                 name: customer.name.trim(),
                 email: customer.email.toLowerCase().trim(),
-                document: cleanDocument,
-                documentType: cleanDocument.length === 11 ? 'cpf' : 'cnpj' // camelCase
+                document: {
+                    number: cleanDocument,
+                    type: cleanDocument.length === 11 ? 'cpf' : 'cnpj'
+                },
+                // Campos opcionais que podem ser esperados
+                phone: {
+                    countryCode: "55",
+                    areaCode: "11", 
+                    number: "999999999"
+                }
+            },
+            billing: {
+                name: customer.name.trim(),
+                email: customer.email.toLowerCase().trim()
             },
             items: items.map(item => ({
-                name: String(item.name).substring(0, 50),
+                title: String(item.name).substring(0, 50), // 'title' em vez de 'name'
                 quantity: parseInt(item.quantity) || 1,
-                amount: parseInt(item.price) || Math.floor(amount / items.length)
+                unitPrice: parseInt(item.price) || Math.floor(amount / items.length), // 'unitPrice' em vez de 'amount'
+                tangible: true, // Campo obrigatório - produto físico (true) ou digital (false)
+                category: "others" // Categoria do produto
             }))
         };
 
@@ -125,7 +139,12 @@ export default async function handler(req, res) {
         // Adicionar ID único da transação
         pagflexPayload.orderId = `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-        console.log('Payload para PagFlex:', JSON.stringify(pagflexPayload, null, 2));
+        console.log('Payload corrigido para PagFlex:', JSON.stringify(pagflexPayload, null, 2));
+        console.log('Validações do payload:');
+        console.log('- Customer document é objeto?', typeof pagflexPayload.customer.document === 'object');
+        console.log('- Items[0] tem title?', !!pagflexPayload.items[0]?.title);
+        console.log('- Items[0] tem unitPrice?', !!pagflexPayload.items[0]?.unitPrice);
+        console.log('- Items[0] tem tangible?', pagflexPayload.items[0]?.tangible !== undefined);
 
         // URL da API conforme documentação
         const apiUrl = 'https://api.pagflexbr.com/v1/transactions';
