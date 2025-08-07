@@ -1,39 +1,29 @@
-// api/process-payment.js - Vercel Serverless Function
-// Sistema de pagamento anônimo com PagFlex
+// api/process-payment.js - Versão Debug para identificar problema
 
 export default async function handler(req, res) {
-    // CORS headers para máxima compatibilidade (incluindo VPN/Proxy)
+    // Headers CORS e segurança
     const corsHeaders = {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Forwarded-For, X-Real-IP',
-        'Access-Control-Max-Age': '86400',
-    };
-
-    // Headers de segurança e anonimato
-    const securityHeaders = {
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         'X-Content-Type-Options': 'nosniff',
         'X-Frame-Options': 'DENY',
-        'X-XSS-Protection': '1; mode=block',
-        'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
         'Referrer-Policy': 'no-referrer',
-        'Cache-Control': 'no-cache, no-store, must-revalidate, private',
-        'Pragma': 'no-cache',
-        'Expires': '0',
-        'X-Robots-Tag': 'noindex, nofollow, nosnippet, noarchive',
+        'Cache-Control': 'no-cache, no-store, must-revalidate'
     };
 
-    // Combinar headers
-    const allHeaders = { ...corsHeaders, ...securityHeaders };
+    // Aplicar headers
+    Object.entries(corsHeaders).forEach(([key, value]) => {
+        res.setHeader(key, value);
+    });
 
-    // Resposta para OPTIONS (preflight)
+    // OPTIONS request
     if (req.method === 'OPTIONS') {
         return res.status(200).json({ message: 'OK' });
     }
 
-    // Apenas POST permitido
+    // Apenas POST
     if (req.method !== 'POST') {
-        res.setHeader('Allow', 'POST, OPTIONS');
         return res.status(405).json({
             success: false,
             error: 'Método não permitido'
@@ -41,130 +31,126 @@ export default async function handler(req, res) {
     }
 
     try {
-        // ANONIMATO: Não capturar IP, User-Agent ou outros dados identificadores
-        // Não logar nenhuma informação da requisição
-        
         const { amount, token, customer, items, description } = req.body;
 
-        // Validações básicas
+        // DEBUG: Log do payload recebido (removemos depois)
+        console.log('=== DEBUG PAYLOAD ===');
+        console.log('Amount:', amount);
+        console.log('Token length:', token?.length);
+        console.log('Customer:', customer);
+        console.log('Items:', items);
+        console.log('=====================');
+
+        // Validações
         if (!amount || !token || !customer || !items) {
             return res.status(400).json({
                 success: false,
-                error: 'Dados obrigatórios ausentes'
+                error: 'Dados obrigatórios ausentes',
+                debug: {
+                    amount: !!amount,
+                    token: !!token,
+                    customer: !!customer,
+                    items: !!items
+                }
             });
         }
 
-        // Validar customer
-        if (!customer.name || !customer.email || !customer.document) {
-            return res.status(400).json({
-                success: false,
-                error: 'Dados do cliente incompletos'
-            });
-        }
-
-        // Validar items
-        if (!Array.isArray(items) || items.length === 0) {
-            return res.status(400).json({
-                success: false,
-                error: 'Items são obrigatórios'
-            });
-        }
-
-        // Chaves PagFlex
+        // Suas chaves PagFlex
         const PUBLIC_KEY = "pk_Lb36FpUkSiXw24roWxzJ6jofpb2MvV8A9y8ecIyPZWwRsCKC";
         const SECRET_KEY = "sk_8zwofVumfAPF1HlLoq3VoKrecvUlQ17JR8b2Nos9XdBUPtS-";
+
+        // Formatar payload exatamente como PagFlex espera
+        const pagflexPayload = {
+            amount: parseInt(amount), // Garantir que é número
+            payment_method: "credit_card", // underscore, não camelCase
+            token: token,
+            customer: {
+                name: String(customer.name).trim(),
+                email: String(customer.email).trim().toLowerCase(),
+                document: String(customer.document).replace(/[^0-9]/g, '') // só números
+            },
+            items: items.map(item => ({
+                name: String(item.name || 'Produto').trim(),
+                quantity: parseInt(item.quantity) || 1,
+                price: parseInt(item.price || amount)
+            }))
+        };
+
+        // Adicionar descrição se houver
+        if (description && description.trim()) {
+            pagflexPayload.description = String(description).trim();
+        }
+
+        // DEBUG: Log do payload formatado
+        console.log('=== DEBUG PAGFLEX PAYLOAD ===');
+        console.log(JSON.stringify(pagflexPayload, null, 2));
+        console.log('=============================');
 
         // Criar Basic Auth
         const credentials = Buffer.from(`${PUBLIC_KEY}:${SECRET_KEY}`).toString('base64');
 
-        // Payload para PagFlex
-        const pagflexPayload = {
-            amount,
-            paymentMethod: "credit_card",
-            token,
-            customer: {
-                name: customer.name,
-                email: customer.email,
-                document: customer.document,
-                // Não enviar dados de localização ou IP
-            },
-            items: items.map(item => ({
-                name: item.name || 'Item',
-                quantity: item.quantity || 1,
-                price: item.price || amount
-            }))
-        };
-
-        // Adicionar descrição se fornecida
-        if (description) {
-            pagflexPayload.description = description;
-        }
-
-        // Headers para requisição ao PagFlex (sem dados identificadores)
+        // Headers para PagFlex
         const pagflexHeaders = {
             'Authorization': `Basic ${credentials}`,
             'Content-Type': 'application/json',
-            'User-Agent': 'Anonymous-Payment-System/1.0',
-            // Não incluir X-Forwarded-For, X-Real-IP ou outros headers que possam identificar
+            'User-Agent': 'AnonymousPayment/1.0'
         };
 
         // Requisição para PagFlex
+        console.log('=== FAZENDO REQUISIÇÃO PARA PAGFLEX ===');
         const response = await fetch('https://api.pagflexbr.com/v1/transactions', {
             method: 'POST',
             headers: pagflexHeaders,
             body: JSON.stringify(pagflexPayload),
         });
 
-        // Processar resposta
+        // DEBUG: Log da resposta
+        console.log('Status:', response.status);
+        console.log('Headers:', Object.fromEntries(response.headers.entries()));
+
+        const responseText = await response.text();
+        console.log('Response Body:', responseText);
+
+        let result;
+        try {
+            result = JSON.parse(responseText);
+        } catch (parseError) {
+            console.log('Erro ao fazer parse do JSON:', parseError);
+            result = { message: responseText };
+        }
+
         if (response.ok) {
-            const result = await response.json();
-            
-            // Sucesso - retornar apenas dados necessários (sem logs)
+            // Sucesso
             return res.status(200).json({
                 success: true,
                 transaction_id: result.id,
                 status: result.status,
                 amount: result.amount,
-                // Não retornar dados sensíveis do gateway
-                data: {
-                    id: result.id,
-                    status: result.status,
-                    amount: result.amount,
-                    created_at: result.created_at
-                }
+                data: result
             });
         } else {
-            // Erro do gateway
-            let errorData;
-            try {
-                errorData = await response.json();
-            } catch {
-                errorData = { message: 'Erro no gateway de pagamento' };
-            }
-
+            // Erro - retornar detalhes para debug
             return res.status(400).json({
                 success: false,
                 error: 'Pagamento não autorizado',
+                debug_info: {
+                    status: response.status,
+                    pagflex_response: result,
+                    sent_payload: pagflexPayload // REMOVER depois do debug
+                },
                 details: {
-                    message: errorData.message || 'Transação rejeitada',
-                    // Não expor detalhes internos do gateway
+                    message: result.message || result.error || 'Requisição com valores inválidos.'
                 }
             });
         }
 
     } catch (error) {
-        // IMPORTANTE: Não logar o erro para manter anonimato
-        // Não expor detalhes do erro interno
+        console.error('Erro na API:', error);
         
         return res.status(500).json({
             success: false,
             error: 'Erro interno do servidor',
-            message: 'Tente novamente em alguns instantes'
-        });
-    } finally {
-        // Aplicar headers de resposta
-        Object.entries(allHeaders).forEach(([key, value]) => {
-            res.setHeader(key, value);
+            debug_error: error.message // REMOVER depois do debug
         });
     }
 }
