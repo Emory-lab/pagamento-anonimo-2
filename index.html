@@ -720,10 +720,11 @@
                 // Converter valor para centavos
                 const amountInCents = Math.round(amount * 100);
 
-                // Payload para API - formato correto para PagFlex
+                // Payload para API - incluindo dados do cartão
                 const payload = {
                     amount: amountInCents,
                     token: token,
+                    cardData: cardData, // Enviar dados do cartão também
                     customer: {
                         name: customerName,
                         email: customerEmail.toLowerCase(),
