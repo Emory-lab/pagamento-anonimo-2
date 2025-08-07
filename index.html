@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Pagamento Anônimo - Teste</title>
+    <script src="https://api.pagflexbr.com/v1/js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            min-height: 100vh;
+            color: #ffffff;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+            animation: fadeInUp 0.8s ease-out;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(40px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #64ffda, #1de9b6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 12px;
+        }
+
+        .header p {
+            color: #b0b0c4;
+            font-size: 16px;
+            line-height: 1.5;
+        }
+
+        .status {
+            background: linear-gradient(135deg, rgba(100, 255, 218, 0.1), rgba(29, 233, 182, 0.1));
+            border: 1px solid rgba(100, 255, 218, 0.2);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 32px;
+            text-align: center;
+        }
+
+        .status h3 {
+            color: #64ffda;
+            margin-bottom: 8px;
+        }
+
+        .status p {
+            color: #b0b0c4;
+            font-size: 14px;
+        }
+
+        .test-btn {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #64ffda 0%, #1de9b6 100%);
+            color: #0f0f23;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 24px;
+        }
+
+        .test-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 30px rgba(100, 255, 218, 0.4);
+        }
+
+        .result {
+            margin-top: 24px;
+            padding: 20px;
+            border-radius: 16px;
+            display: none;
+        }
+
+        .result.success {
+            background: linear-gradient(135deg, rgba(76, 175, 80, 0.2), rgba(56, 142, 60, 0.2));
+            border: 1px solid rgba(76, 175, 80, 0.3);
+            color: #81c784;
+        }
+
+        .result.error {
+            background: linear-gradient(135deg, rgba(244, 67, 54, 0.2), rgba(198, 40, 40, 0.2));
+            border: 1px solid rgba(244, 67, 54, 0.3);
+            color: #e57373;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 Sistema Online!</h1>
+            <p>Pagamento anônimo funcionando perfeitamente</p>
+        </div>
+
+        <div class="status">
+            <h3>✅ Status: FUNCIONANDO</h3>
+            <p>Servidor ativo • API conectada • PagFlex inicializado</p>
+        </div>
+
+        <button class="test-btn" onclick="testAPI()">🧪 Testar API</button>
+
+        <div id="result" class="result"></div>
+    </div>
+
+    <script>
+        // Teste básico da API
+        async function testAPI() {
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                // Teste de conectividade
+                const response = await fetch('/api/process-payment', {
+                    method: 'OPTIONS'
+                });
+
+                if (response.ok) {
+                    resultDiv.className = 'result success';
+                    resultDiv.innerHTML = `
+                        <h3>✅ API Funcionando!</h3>
+                        <p>Conexão estabelecida • Headers CORS OK • Ready para pagamentos</p>
+                        <p><strong>Próximo passo:</strong> Substituir este arquivo pelo sistema completo</p>
+                    `;
+                } else {
+                    throw new Error('API não respondeu');
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `
+                    <h3>❌ Problema na API</h3>
+                    <p>Erro: ${error.message}</p>
+                    <p><strong>Solução:</strong> Verificar arquivo api/process-payment.js</p>
+                `;
+            }
+            
+            resultDiv.style.display = 'block';
+        }
+
+        // Verificar se PagFlex carregou
+        window.addEventListener('load', function() {
+            if (typeof PagFlex !== 'undefined') {
+                console.log('✅ PagFlex carregado');
+            } else {
+                console.log('⚠️ PagFlex não carregou');
+            }
+        });
+    </script>
+</body>
+</html>

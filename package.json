@@ -1,0 +1,34 @@
+{
+  "name": "anonymous-payment-system",
+  "version": "1.0.0",
+  "description": "Sistema de pagamento anônimo com foco em privacidade máxima",
+  "main": "index.html",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "echo 'Build complete'",
+    "deploy": "vercel --prod"
+  },
+  "keywords": [
+    "payment",
+    "anonymous",
+    "privacy",
+    "pagflex",
+    "vercel",
+    "serverless"
+  ],
+  "author": "Anonymous Developer",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "vercel": "^32.0.0"
+  },
+  "vercel": {
+    "functions": {
+      "api/process-payment.js": {
+        "maxDuration": 30
+      }
+    }
+  }
+}
