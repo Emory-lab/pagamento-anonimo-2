@@ -1,5 +1,5 @@
 // api/process-payment.js - Vercel Serverless Function
-// Sistema de pagamento anônimo com PagFlex
+// Sistema de pagamento anônimo com PagFlex - CORRIGIDO
 
 export default async function handler(req, res) {
     // CORS headers para máxima compatibilidade (incluindo VPN/Proxy)
@@ -25,6 +25,11 @@ export default async function handler(req, res) {
 
     // Combinar headers
     const allHeaders = { ...corsHeaders, ...securityHeaders };
+
+    // Aplicar headers imediatamente
+    Object.entries(allHeaders).forEach(([key, value]) => {
+        res.setHeader(key, value);
+    });
 
     // Resposta para OPTIONS (preflight)
     if (req.method === 'OPTIONS') {
@@ -63,7 +68,7 @@ export default async function handler(req, res) {
         }
 
         // Validar customer com mais rigor
-        if (!customer.name || customer.name.length < 2) {
+        if (!customer || !customer.name || customer.name.length < 2) {
             return res.status(400).json({
                 success: false,
                 error: 'Nome do cliente deve ter pelo menos 2 caracteres'
@@ -93,7 +98,7 @@ export default async function handler(req, res) {
             });
         }
 
-        // Validar items com mais detalhes
+        // Validar items
         if (!Array.isArray(items) || items.length === 0) {
             return res.status(400).json({
                 success: false,
@@ -131,102 +136,120 @@ export default async function handler(req, res) {
         // Criar Basic Auth
         const credentials = Buffer.from(`${PUBLIC_KEY}:${SECRET_KEY}`).toString('base64');
 
-        // Payload para PagFlex - Formato correto brasileiro
+        // Payload para PagFlex - Formato correto segundo a documentação
         const pagflexPayload = {
-            amount: amount, // Já em centavos
-            payment_method: "credit_card", // underscore, não camelCase
-            card_token: token, // PagFlex usa 'card_token', não 'token'
+            amount: amount, // Valor em centavos
+            card_token: token, // Token do cartão criptografado
             customer: {
                 name: customer.name,
                 email: customer.email,
-                document: customer.document.replace(/[^0-9]/g, ''), // Apenas números
-                document_type: customer.document.replace(/[^0-9]/g, '').length === 11 ? "cpf" : "cnpj"
+                document: cleanDocument, // Apenas números
+                document_type: cleanDocument.length === 11 ? "cpf" : "cnpj"
             },
             billing: {
                 name: customer.name,
                 email: customer.email
             },
             items: items.map(item => ({
-                description: item.name || 'Item',
-                quantity: item.quantity || 1,
-                amount: item.price || amount // PagFlex usa 'amount', não 'price'
+                name: item.name,
+                quantity: item.quantity,
+                amount: item.price // PagFlex usa 'amount' para preço do item
             })),
-            currency: "BRL" // Moeda obrigatória
+            currency: "BRL",
+            payment_method: "credit_card"
         };
 
         // Adicionar descrição se fornecida
         if (description) {
-            pagflexPayload.description = description;
+            pagflexPayload.description = description.substring(0, 100);
         }
 
         // Adicionar order_id único
         pagflexPayload.order_id = `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-        // Headers para requisição ao PagFlex (sem dados identificadores)
+        // Headers para requisição ao PagFlex
         const pagflexHeaders = {
             'Authorization': `Basic ${credentials}`,
             'Content-Type': 'application/json',
-            'User-Agent': 'Anonymous-Payment-System/1.0',
-            // Não incluir X-Forwarded-For, X-Real-IP ou outros headers que possam identificar
+            'Accept': 'application/json',
+            'User-Agent': 'Anonymous-Payment-System/1.0'
         };
 
+        // Endpoint correto do PagFlex
+        const pagflexEndpoint = 'https://api.pagflexbr.com/v1/sales';
+
+        console.log('Enviando para PagFlex:', JSON.stringify({
+            endpoint: pagflexEndpoint,
+            payload: pagflexPayload
+        }, null, 2));
+
         // Requisição para PagFlex
-        const response = await fetch('https://api.pagflexbr.com/v1/transactions', {
+        const response = await fetch(pagflexEndpoint, {
             method: 'POST',
             headers: pagflexHeaders,
             body: JSON.stringify(pagflexPayload),
+            timeout: 25000 // 25 segundos de timeout
         });
 
+        const responseText = await response.text();
+        console.log('Resposta PagFlex (raw):', responseText);
+
+        let result;
+        try {
+            result = JSON.parse(responseText);
+        } catch (parseError) {
+            console.error('Erro ao parsear resposta:', parseError);
+            return res.status(500).json({
+                success: false,
+                error: 'Resposta inválida do gateway',
+                details: {
+                    message: 'Erro na comunicação com o gateway de pagamento'
+                }
+            });
+        }
+
         // Processar resposta
-        if (response.ok) {
-            const result = await response.json();
-            
+        if (response.ok && result) {
             // Sucesso - retornar apenas dados necessários (sem logs)
             return res.status(200).json({
                 success: true,
-                transaction_id: result.id,
+                transaction_id: result.id || result.transaction_id,
                 status: result.status,
                 amount: result.amount,
-                // Não retornar dados sensíveis do gateway
                 data: {
-                    id: result.id,
+                    id: result.id || result.transaction_id,
                     status: result.status,
                     amount: result.amount,
-                    created_at: result.created_at
+                    created_at: result.created_at || new Date().toISOString()
                 }
             });
         } else {
             // Erro do gateway
-            let errorData;
-            try {
-                errorData = await response.json();
-            } catch {
-                errorData = { message: 'Erro no gateway de pagamento' };
-            }
+            console.error('Erro PagFlex:', {
+                status: response.status,
+                statusText: response.statusText,
+                result: result
+            });
 
             return res.status(400).json({
                 success: false,
                 error: 'Pagamento não autorizado',
                 details: {
-                    message: errorData.message || 'Transação rejeitada',
-                    // Não expor detalhes internos do gateway
+                    message: result?.message || result?.error || 'Transação rejeitada',
+                    code: result?.code || response.status
                 }
             });
         }
 
     } catch (error) {
-        // IMPORTANTE: Não logar o erro para manter anonimato
-        // Não expor detalhes do erro interno
+        // Log do erro para debugging (remover em produção para manter anonimato)
+        console.error('Erro interno:', error);
         
         return res.status(500).json({
             success: false,
             error: 'Erro interno do servidor',
-            message: 'Tente novamente em alguns instantes'
-        });
-    } finally {
-        // Aplicar headers de resposta
-        Object.entries(allHeaders).forEach(([key, value]) => {
-            res.setHeader(key, value);
+            message: 'Tente novamente em alguns instantes',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 }
