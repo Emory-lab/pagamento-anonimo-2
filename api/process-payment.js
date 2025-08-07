@@ -43,13 +43,14 @@ export default async function handler(req, res) {
     try {
         console.log('=== INÍCIO PROCESSAMENTO PAGFLEX ===');
         
-        const { amount, token, customer, items, description } = req.body;
+        const { amount, token, customer, items, description, cardData } = req.body;
 
         // Log seguro do payload (sem dados sensíveis)
         console.log('Payload recebido:', {
             amount,
             hasToken: !!token,
             tokenLength: token?.length,
+            hasCardData: !!cardData,
             customer: customer ? {
                 name: customer.name,
                 email: customer.email,
@@ -87,6 +88,13 @@ export default async function handler(req, res) {
             });
         }
 
+        if (!cardData || !cardData.number || !cardData.holderName || !cardData.expMonth || !cardData.expYear || !cardData.cvv) {
+            return res.status(400).json({
+                success: false,
+                error: 'Dados do cartão são obrigatórios (number, holderName, expMonth, expYear, cvv)'
+            });
+        }
+
         // Chaves PagFlex
         const PUBLIC_KEY = "pk_Lb36FpUkSiXw24roWxzJ6jofpb2MvV8A9y8ecIyPZWwRsCKC";
         const SECRET_KEY = "sk_8zwofVumfAPF1HlLoq3VoKrecvUlQ17JR8b2Nos9XdBUPtS-";
@@ -106,7 +114,12 @@ export default async function handler(req, res) {
             installments: 1, // Número de parcelas obrigatório
             token: token, // Token criptografado do cartão
             card: {
-                token: token // Informações do cartão via token
+                token: token, // Token para segurança
+                number: cardData.number.replace(/\s/g, ''), // Número do cartão sem espaços
+                holderName: cardData.holderName.trim(), // Nome do titular
+                expirationMonth: parseInt(cardData.expMonth), // Mês de expiração
+                expirationYear: parseInt(cardData.expYear), // Ano de expiração
+                cvv: cardData.cvv // CVV
             },
             customer: {
                 name: customer.name.trim(),
