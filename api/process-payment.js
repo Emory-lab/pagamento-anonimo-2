@@ -105,6 +105,16 @@ export default async function handler(req, res) {
             // Token do cartão
             token: token,
             
+            // Dados do cartão - OBRIGATÓRIO conforme erro
+            card: {
+                token: token,
+                number: cardData.number.replace(/\s/g, ''),
+                holderName: cardData.holderName.trim(),
+                expirationMonth: parseInt(cardData.expMonth),
+                expirationYear: parseInt(cardData.expYear),
+                cvv: cardData.cvv
+            },
+            
             // Dados do cliente - FORMATO OBJETO para document
             customer: {
                 name: customer.name.trim(),
@@ -147,7 +157,7 @@ export default async function handler(req, res) {
             pagflexPayload.description = description.trim().substring(0, 100);
         }
 
-        console.log('Payload corrigido conforme validações PagFlex:', JSON.stringify({
+        console.log('Payload corrigido com dados do cartão:', JSON.stringify({
             amount: pagflexPayload.amount,
             paymentMethod: pagflexPayload.paymentMethod,
             installments: pagflexPayload.installments,
@@ -157,9 +167,16 @@ export default async function handler(req, res) {
                 document: pagflexPayload.customer.document,
                 phone: pagflexPayload.customer.phone
             },
+            card: {
+                number: pagflexPayload.card.number.substring(0, 6) + '****' + pagflexPayload.card.number.substring(pagflexPayload.card.number.length - 4),
+                holderName: pagflexPayload.card.holderName,
+                expirationMonth: pagflexPayload.card.expirationMonth,
+                expirationYear: pagflexPayload.card.expirationYear,
+                cvv: '***',
+                hasToken: !!pagflexPayload.card.token
+            },
             items: pagflexPayload.items,
-            metadata: pagflexPayload.metadata,
-            hasToken: !!pagflexPayload.token
+            metadata: pagflexPayload.metadata
         }, null, 2));
 
         // Tentar múltiplas URLs da API (fallback)
