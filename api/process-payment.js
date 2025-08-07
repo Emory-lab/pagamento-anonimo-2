@@ -95,48 +95,51 @@ export default async function handler(req, res) {
         // Preparar documento (apenas números)
         const cleanDocument = customer.document.replace(/[^0-9]/g, '');
         
-        // Payload simplificado baseado no padrão PagFlex atualizado
+        // Payload corrigido baseado nos erros específicos da PagFlex
         const pagflexPayload = {
             // Dados básicos da transação
             amount: amount,
-            payment_method: 'credit_card',
+            paymentMethod: 'credit_card', // Correto: paymentMethod (não payment_method)
             installments: 1,
             
-            // Token do cartão (método principal)
-            card_token: token,
+            // Token do cartão
+            token: token,
             
-            // Dados do cliente (formato simplificado)
+            // Dados do cliente - FORMATO OBJETO para document
             customer: {
                 name: customer.name.trim(),
                 email: customer.email.toLowerCase().trim(),
-                document: cleanDocument,
-                document_type: cleanDocument.length === 11 ? 'cpf' : 'cnpj',
+                document: {
+                    number: cleanDocument,
+                    type: cleanDocument.length === 11 ? 'cpf' : 'cnpj'
+                },
                 phone: '+5511999999999'
             },
             
-            // Endereço de cobrança (simplificado)
-            billing_address: {
-                street: 'Rua Exemplo',
-                street_number: '123',
-                neighborhood: 'Centro',
-                city: 'São Paulo',
-                state: 'SP',
-                zipcode: '01001000',
-                country: 'BR'
+            // Endereço de cobrança
+            billing: {
+                name: customer.name.trim(),
+                address: {
+                    street: 'Rua Exemplo',
+                    street_number: '123',
+                    neighborhood: 'Centro',
+                    city: 'São Paulo',
+                    state: 'SP',
+                    zipcode: '01001000',
+                    country: 'BR'
+                }
             },
             
-            // Items da compra (formato padrão brasileiro)
+            // Items - FORMATO EXATO conforme erro
             items: items.map(item => ({
-                name: String(item.name).substring(0, 50),
+                title: String(item.name).substring(0, 50), // title (não name)
                 quantity: parseInt(item.quantity) || 1,
-                unit_price: parseInt(item.price) || Math.floor(amount / items.length)
+                unitPrice: parseInt(item.price) || Math.floor(amount / items.length), // unitPrice
+                tangible: true // Campo obrigatório
             })),
             
-            // Metadados adicionais
-            metadata: {
-                order_id: `order_${Date.now()}`,
-                source: 'anonymous_payment_system'
-            }
+            // Metadados - deve ser STRING (não objeto)
+            metadata: `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
         };
 
         // Adicionar descrição opcional
@@ -144,13 +147,19 @@ export default async function handler(req, res) {
             pagflexPayload.description = description.trim().substring(0, 100);
         }
 
-        console.log('Payload simplificado para PagFlex 2025:', JSON.stringify({
+        console.log('Payload corrigido conforme validações PagFlex:', JSON.stringify({
             amount: pagflexPayload.amount,
-            payment_method: pagflexPayload.payment_method,
+            paymentMethod: pagflexPayload.paymentMethod,
             installments: pagflexPayload.installments,
-            customer: pagflexPayload.customer,
+            customer: {
+                name: pagflexPayload.customer.name,
+                email: pagflexPayload.customer.email,
+                document: pagflexPayload.customer.document,
+                phone: pagflexPayload.customer.phone
+            },
             items: pagflexPayload.items,
-            hasToken: !!pagflexPayload.card_token
+            metadata: pagflexPayload.metadata,
+            hasToken: !!pagflexPayload.token
         }, null, 2));
 
         // Tentar múltiplas URLs da API (fallback)
