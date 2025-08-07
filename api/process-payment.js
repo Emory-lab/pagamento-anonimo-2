@@ -111,12 +111,7 @@ export default async function handler(req, res) {
                     number: cleanDocument,
                     type: cleanDocument.length === 11 ? 'cpf' : 'cnpj'
                 },
-                // Campos opcionais que podem ser esperados
-                phone: {
-                    countryCode: "55",
-                    areaCode: "11", 
-                    number: "999999999"
-                }
+                phone: "5511999999999" // String simples como esperado
             },
             billing: {
                 name: customer.name.trim(),
