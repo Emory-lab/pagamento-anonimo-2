@@ -489,11 +489,43 @@
         document.getElementById('customerDocument').addEventListener('input', function(e) {
             let value = e.target.value.replace(/[^0-9]/gi, '');
             if (value.length <= 11) {
+                // CPF: 000.000.000-00
                 value = value.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-            } else {
+            } else if (value.length <= 14) {
+                // CNPJ: 00.000.000/0000-00
                 value = value.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
             }
             e.target.value = value;
+        });
+
+        // Validação de e-mail em tempo real
+        document.getElementById('customerEmail').addEventListener('blur', function(e) {
+            const email = e.target.value.trim();
+            if (email && (!email.includes('@') || !email.includes('.') || email.length < 5)) {
+                e.target.style.borderColor = '#f44336';
+                e.target.title = 'E-mail inválido';
+            } else {
+                e.target.style.borderColor = '';
+                e.target.title = '';
+            }
+        });
+
+        // Validação de valor em tempo real
+        document.getElementById('amount').addEventListener('input', function(e) {
+            const value = parseFloat(e.target.value) || 0;
+            const display = document.getElementById('amountDisplay');
+            
+            if (value > 9999.99) {
+                e.target.value = '9999.99';
+                display.textContent = 'R$ 9.999,99 (máx)';
+                display.style.color = '#f44336';
+            } else if (value <= 0) {
+                display.textContent = 'R$ 0,00';
+                display.style.color = '#888';
+            } else {
+                display.textContent = 'R$ ' + value.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                display.style.color = '#64ffda';
+            }
         });
 
         function showResult(type, title, content) {
@@ -541,27 +573,49 @@
                 // Criptografar com PagFlex
                 const token = await PagFlex.encrypt(cardData);
                 
+                // Validações no frontend antes de enviar
+                const amount = parseFloat(formData.get('amount'));
+                if (!amount || amount <= 0 || amount > 999999) {
+                    throw new Error('Valor deve estar entre R$ 0,01 e R$ 9.999,99');
+                }
+                
+                const customerName = formData.get('customerName').trim();
+                if (!customerName || customerName.length < 2) {
+                    throw new Error('Nome deve ter pelo menos 2 caracteres');
+                }
+                
+                const customerEmail = formData.get('customerEmail').trim();
+                if (!customerEmail || !customerEmail.includes('@') || !customerEmail.includes('.')) {
+                    throw new Error('E-mail inválido');
+                }
+                
+                const customerDoc = formData.get('customerDocument').replace(/[^0-9]/g, '');
+                if (!customerDoc || (customerDoc.length !== 11 && customerDoc.length !== 14)) {
+                    throw new Error('CPF deve ter 11 dígitos ou CNPJ deve ter 14 dígitos');
+                }
+                
                 // Converter valor para centavos
-                const amountInCents = Math.round(parseFloat(formData.get('amount')) * 100);
+                const amountInCents = Math.round(amount * 100);
 
-                // Payload para API
+                // Payload para API - formato correto para PagFlex
                 const payload = {
                     amount: amountInCents,
                     token: token,
                     customer: {
-                        name: formData.get('customerName'),
-                        email: formData.get('customerEmail'),
-                        document: formData.get('customerDocument').replace(/[^0-9]/g, '')
+                        name: formData.get('customerName').trim(),
+                        email: formData.get('customerEmail').trim().toLowerCase(),
+                        document: formData.get('customerDocument').replace(/[^0-9]/g, '') // Apenas números
                     },
                     items: [{
-                        name: formData.get('description') || 'Pagamento',
+                        name: (formData.get('description') || 'Pagamento').substring(0, 50), // Limitar caracteres
                         quantity: 1,
                         price: amountInCents
                     }]
                 };
 
-                if (formData.get('description')) {
-                    payload.description = formData.get('description');
+                // Adicionar descrição se fornecida (separado do item)
+                if (formData.get('description') && formData.get('description').trim()) {
+                    payload.description = formData.get('description').trim().substring(0, 100);
                 }
 
                 // Requisição para API
@@ -605,8 +659,16 @@
             }
         });
 
-        // Sistema inicializado com sucesso
-        console.log('🔐 Sistema de Pagamento Anônimo carregado');
+        // Prevenir qualquer tipo de logging ou rastreamento
+        console.log = function() {};
+        console.info = function() {};
+        console.warn = function() {};
+        console.error = function() {};
+        
+        // Bloquear tentativas de captura de dados
+        Object.defineProperty(navigator, 'userAgent', {
+            get: function() { return 'Anonymous'; }
+        });
     </script>
 </body>
 </html>
