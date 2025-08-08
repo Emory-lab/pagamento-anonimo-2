@@ -101,14 +101,23 @@ export default async function handler(req, res) {
         const pagflexPayload = {
             amount: amount,
             payment_method: "credit_card",
-            card_token: token,
             installments: 1,
             capture: true,
+            card: {
+                token: token
+            },
             customer: {
                 name: customer.name.trim(),
                 email: customer.email.toLowerCase().trim(),
-                document: cleanDocument,
-                document_type: documentType
+                document: {
+                    type: documentType,
+                    number: cleanDocument
+                }
+            },
+            // Adicionar billing address (pode ser obrigatório)
+            billing: {
+                name: customer.name.trim(),
+                email: customer.email.toLowerCase().trim()
             }
         };
 
@@ -123,10 +132,15 @@ export default async function handler(req, res) {
             capture: pagflexPayload.capture,
             external_id: pagflexPayload.external_id,
             customer: {
-                ...pagflexPayload.customer,
-                document: pagflexPayload.customer.document.substring(0, 3) + '***'
+                name: pagflexPayload.customer.name,
+                email: pagflexPayload.customer.email,
+                document: {
+                    type: pagflexPayload.customer.document.type,
+                    number: pagflexPayload.customer.document.number.substring(0, 3) + '***'
+                }
             },
-            token_length: token.length
+            billing: pagflexPayload.billing,
+            card: { token_length: token.length }
         });
 
         // Headers para requisição
