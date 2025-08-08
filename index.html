@@ -270,6 +270,17 @@
             overflow-x: auto;
             white-space: pre-wrap;
             color: #e0e0e0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .error-details {
+            margin-top: 12px;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            font-size: 12px;
+            color: #ccc;
         }
 
         @media (max-width: 768px) {
@@ -312,7 +323,7 @@
                 <div class="section-title">💰 Valor do Pagamento</div>
                 <div class="form-group amount-group">
                     <label for="amount">Valor em Reais (R$)</label>
-                    <input type="number" id="amount" name="amount" placeholder="0,00" required min="0.01" step="0.01">
+                    <input type="number" id="amount" name="amount" placeholder="0,00" required min="1.00" max="999999.99" step="0.01">
                     <div class="amount-display" id="amountDisplay">R$ 0,00</div>
                 </div>
             </div>
@@ -321,7 +332,7 @@
                 <div class="section-title">👤 Dados do Cliente</div>
                 <div class="form-group">
                     <label for="customerName">Nome Completo</label>
-                    <input type="text" id="customerName" name="customerName" placeholder="Nome completo" required>
+                    <input type="text" id="customerName" name="customerName" placeholder="Nome completo" required minlength="2" maxlength="100">
                 </div>
                 <div class="form-group">
                     <label for="customerEmail">E-mail</label>
@@ -341,7 +352,7 @@
                 </div>
                 <div class="form-group">
                     <label for="holderName">Nome no Cartão</label>
-                    <input type="text" id="holderName" name="holderName" placeholder="Nome impresso no cartão" required>
+                    <input type="text" id="holderName" name="holderName" placeholder="Nome impresso no cartão" required minlength="2" maxlength="50">
                 </div>
                 <div class="form-row">
                     <div class="form-group">
@@ -398,6 +409,7 @@
         <div class="result" id="result">
             <h3 id="resultTitle"></h3>
             <pre id="resultContent"></pre>
+            <div class="error-details" id="errorDetails" style="display: none;"></div>
         </div>
     </div>
 
@@ -412,17 +424,31 @@
             submitBtn.disabled = true;
 
             try {
+                // Aguardar carregamento do script PagFlex
+                let attempts = 0;
+                while (typeof PagFlex === 'undefined' && attempts < 10) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    attempts++;
+                }
+
+                if (typeof PagFlex === 'undefined') {
+                    throw new Error('PagFlex não foi carregado. Verifique sua conexão.');
+                }
+
                 await PagFlex.setPublicKey(PUBLIC_KEY);
                 pagflexInitialized = true;
-                console.log('✅ PagFlex inicializado');
+                console.log('✅ PagFlex inicializado com sucesso');
                 
                 submitBtn.textContent = '🚀 Processar Pagamento';
                 submitBtn.disabled = false;
             } catch (error) {
-                console.error('❌ Erro PagFlex:', error);
+                console.error('❌ Erro ao inicializar PagFlex:', error);
                 submitBtn.textContent = '❌ Sistema Indisponível';
                 submitBtn.disabled = true;
-                showResult('error', 'Erro de Inicialização', error.message);
+                showResult('error', 'Erro de Inicialização', {
+                    erro: error.message,
+                    sugestao: 'Recarregue a página e verifique sua conexão'
+                });
             }
         });
 
@@ -430,7 +456,7 @@
         document.getElementById('amount').addEventListener('input', function(e) {
             const value = parseFloat(e.target.value) || 0;
             document.getElementById('amountDisplay').textContent = 
-                'R$ ' + value.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                'R$ ' + value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         });
 
         document.getElementById('cardNumber').addEventListener('input', function(e) {
@@ -438,6 +464,8 @@
             let formattedValue = value.match(/.{1,4}/g)?.join(' ') || value;
             if (formattedValue.length <= 19) {
                 e.target.value = formattedValue;
+            } else {
+                e.target.value = e.target.value.slice(0, 19);
             }
         });
 
@@ -448,8 +476,10 @@
         document.getElementById('customerDocument').addEventListener('input', function(e) {
             let value = e.target.value.replace(/[^0-9]/gi, '');
             if (value.length <= 11) {
+                // CPF: 000.000.000-00
                 value = value.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
             } else if (value.length <= 14) {
+                // CNPJ: 00.000.000/0000-00
                 value = value.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
             }
             e.target.value = value;
@@ -459,13 +489,43 @@
             const resultDiv = document.getElementById('result');
             const resultTitle = document.getElementById('resultTitle');
             const resultContent = document.getElementById('resultContent');
+            const errorDetails = document.getElementById('errorDetails');
 
             resultDiv.className = `result ${type}`;
             resultTitle.textContent = title;
-            resultContent.textContent = typeof content === 'object' 
-                ? JSON.stringify(content, null, 2) 
-                : content;
+            
+            if (typeof content === 'object') {
+                resultContent.textContent = JSON.stringify(content, null, 2);
+            } else {
+                resultContent.textContent = content;
+            }
+
+            // Mostrar detalhes adicionais para erros
+            if (type === 'error' && typeof content === 'object') {
+                let detailsText = '';
+                
+                if (content.details) {
+                    detailsText += 'Detalhes técnicos:\n';
+                    detailsText += JSON.stringify(content.details, null, 2);
+                }
+                
+                if (content.debug) {
+                    detailsText += '\n\nInformações de debug:\n';
+                    detailsText += JSON.stringify(content.debug, null, 2);
+                }
+
+                if (detailsText) {
+                    errorDetails.textContent = detailsText;
+                    errorDetails.style.display = 'block';
+                } else {
+                    errorDetails.style.display = 'none';
+                }
+            } else {
+                errorDetails.style.display = 'none';
+            }
+
             resultDiv.style.display = 'block';
+            resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 
         function showLoading(show) {
@@ -475,8 +535,12 @@
 
             loading.style.display = show ? 'block' : 'none';
             submitBtn.disabled = show;
+            
             if (show) {
                 result.style.display = 'none';
+                submitBtn.textContent = '⏳ Processando...';
+            } else {
+                submitBtn.textContent = '🚀 Processar Pagamento';
             }
         }
 
@@ -502,8 +566,10 @@
             e.preventDefault();
             
             if (!pagflexInitialized) {
-                showResult('error', '❌ Sistema Não Inicializado', 
-                    'O sistema ainda não foi carregado. Aguarde alguns segundos.');
+                showResult('error', '❌ Sistema Não Inicializado', {
+                    erro: 'O sistema ainda não foi carregado',
+                    sugestao: 'Aguarde alguns segundos ou recarregue a página'
+                });
                 return;
             }
             
@@ -512,6 +578,28 @@
             try {
                 const formData = new FormData(e.target);
                 
+                // Validações do frontend primeiro
+                const amount = parseFloat(formData.get('amount'));
+                if (!amount || amount <= 0 || amount > 999999.99) {
+                    throw new Error('Valor deve estar entre R$ 1,00 e R$ 999.999,99');
+                }
+                
+                const customerName = formData.get('customerName').trim();
+                if (!customerName || customerName.length < 2 || customerName.length > 100) {
+                    throw new Error('Nome deve ter entre 2 e 100 caracteres');
+                }
+                
+                const customerEmail = formData.get('customerEmail').trim();
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!customerEmail || !emailRegex.test(customerEmail)) {
+                    throw new Error('E-mail inválido');
+                }
+                
+                const customerDoc = formData.get('customerDocument').replace(/[^0-9]/g, '');
+                if (!customerDoc || (customerDoc.length !== 11 && customerDoc.length !== 14)) {
+                    throw new Error('CPF deve ter 11 dígitos ou CNPJ 14 dígitos');
+                }
+
                 // Preparar dados do cartão
                 const cardData = {
                     number: formData.get('cardNumber').replace(/\s/g, ''),
@@ -521,28 +609,7 @@
                     cvv: formData.get('cvv')
                 };
 
-                // Validações mais rigorosas
-                const amount = parseFloat(formData.get('amount'));
-                if (!amount || amount <= 0 || amount > 9999.99) {
-                    throw new Error('Valor deve estar entre R$ 0,01 e R$ 9.999,99');
-                }
-                
-                const customerName = formData.get('customerName').trim();
-                if (!customerName || customerName.length < 2 || customerName.length > 100) {
-                    throw new Error('Nome deve ter entre 2 e 100 caracteres');
-                }
-                
-                const customerEmail = formData.get('customerEmail').trim();
-                if (!customerEmail || !customerEmail.includes('@') || !customerEmail.includes('.') || customerEmail.length < 5) {
-                    throw new Error('E-mail inválido');
-                }
-                
-                const customerDoc = formData.get('customerDocument').replace(/[^0-9]/g, '');
-                if (!customerDoc || (customerDoc.length !== 11 && customerDoc.length !== 14)) {
-                    throw new Error('CPF deve ter 11 dígitos ou CNPJ 14 dígitos');
-                }
-
-                // Validar dados do cartão mais rigorosamente
+                // Validações do cartão
                 if (!cardData.number || cardData.number.length < 13 || cardData.number.length > 19) {
                     throw new Error('Número do cartão inválido (deve ter entre 13-19 dígitos)');
                 }
@@ -566,11 +633,11 @@
 
                 console.log('Criando token do cartão...');
                 const token = await PagFlex.encrypt(cardData);
-                console.log('Token criado:', token.substring(0, 20) + '...');
+                console.log('Token criado com sucesso, tamanho:', token.length);
                 
                 const amountInCents = Math.round(amount * 100);
 
-                // Payload simplificado
+                // Payload para API
                 const payload = {
                     amount: amountInCents,
                     token: token,
@@ -592,13 +659,14 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Accept': 'application/json'
                     },
                     body: JSON.stringify(payload)
                 });
 
                 const result = await response.json();
 
-                console.log('Resposta:', {
+                console.log('Resposta completa:', {
                     status: response.status,
                     success: result.success,
                     result: result
@@ -609,28 +677,66 @@
                         status: 'Aprovado',
                         valor: `R$ ${(amountInCents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
                         transacao: result.transaction_id,
-                        processado: new Date().toLocaleString('pt-BR')
+                        external_id: result.data?.external_id,
+                        processado: new Date().toLocaleString('pt-BR'),
+                        gateway: 'PagFlex'
                     });
                     
-                    // Limpar formulário
+                    // Limpar formulário após sucesso
                     setTimeout(() => {
                         document.getElementById('paymentForm').reset();
                         document.getElementById('amountDisplay').textContent = 'R$ 0,00';
                     }, 3000);
                 } else {
-                    showResult('error', '❌ Pagamento Rejeitado', {
+                    // Mostrar erro detalhado
+                    const errorInfo = {
                         erro: result.error || 'Erro desconhecido',
-                        detalhes: result.details?.message || 'Verifique os dados',
-                        codigo: result.details?.code || response.status,
-                        debug_info: result.debug || result.details
-                    });
+                        status_http: response.status,
+                        gateway_status: result.details?.status || 'N/A',
+                        mensagem: result.details?.message || 'Sem detalhes',
+                        codigo: result.details?.code || 'N/A'
+                    };
+
+                    // Adicionar sugestões baseadas no tipo de erro
+                    if (result.details?.message) {
+                        const msg = result.details.message.toLowerCase();
+                        if (msg.includes('cartão') || msg.includes('card')) {
+                            errorInfo.sugestao = 'Verifique os dados do cartão';
+                        } else if (msg.includes('valor') || msg.includes('amount')) {
+                            errorInfo.sugestao = 'Verifique o valor informado';
+                        } else if (msg.includes('documento') || msg.includes('document')) {
+                            errorInfo.sugestao = 'Verifique CPF/CNPJ informado';
+                        } else if (msg.includes('inválido') || msg.includes('invalid')) {
+                            errorInfo.sugestao = 'Verifique todos os dados informados';
+                        } else {
+                            errorInfo.sugestao = 'Tente novamente ou use dados de teste';
+                        }
+                    } else {
+                        errorInfo.sugestao = 'Use os dados de teste fornecidos acima';
+                    }
+
+                    showResult('error', '❌ Pagamento Rejeitado', errorInfo);
                 }
 
             } catch (error) {
-                console.error('Erro:', error);
+                console.error('Erro no processamento:', error);
+                
+                let errorMessage = error.message || 'Erro desconhecido';
+                let suggestion = 'Verifique os dados e tente novamente';
+
+                // Erros específicos do PagFlex
+                if (error.message?.includes('encrypt') || error.message?.includes('token')) {
+                    errorMessage = 'Erro ao processar dados do cartão';
+                    suggestion = 'Verifique os dados do cartão e tente novamente';
+                } else if (error.message?.includes('network') || error.message?.includes('fetch')) {
+                    errorMessage = 'Erro de comunicação';
+                    suggestion = 'Verifique sua conexão e tente novamente';
+                }
+
                 showResult('error', '❌ Erro no Processamento', {
-                    erro: error.message || 'Erro desconhecido',
-                    sugestao: 'Verifique os dados e tente novamente'
+                    erro: errorMessage,
+                    tipo: error.name || 'Erro desconhecido',
+                    sugestao: suggestion
                 });
             } finally {
                 showLoading(false);
