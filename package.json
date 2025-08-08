@@ -1,7 +1,7 @@
 {
   "name": "anonymous-payment-system",
-  "version": "2.0.0",
-  "description": "Sistema de pagamento anônimo corrigido - PagFlex",
+  "version": "1.0.0",
+  "description": "Sistema de pagamento anônimo com foco em privacidade máxima",
   "main": "index.html",
   "scripts": {
     "dev": "vercel dev",
@@ -23,5 +23,12 @@
   },
   "devDependencies": {
     "vercel": "^32.0.0"
+  },
+  "vercel": {
+    "functions": {
+      "api/process-payment.js": {
+        "maxDuration": 30
+      }
+    }
   }
 }
